@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Red Maple Academy - CRM</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><path d=%22M50 5L55 25L65 15L60 30L75 25L65 38L80 40L65 48L78 60L60 55L62 70L50 58L38 70L40 55L22 60L35 48L20 40L35 38L25 25L40 30L35 15L45 25L50 5Z%22 fill=%22%23C41E2A%22/></svg>">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback, useMemo } = React;
+
+const ROLES = {
+  admin: { label: "Admin", color: "#C41E2A" },
+  admission: { label: "Admission", color: "#2563EB" },
+  fao: { label: "FAO", color: "#DC2626" },
+};
+
+const STATUS_LABELS = {
+  lead: "Lead",
+  registered: "Kayıtlı",
+  docs_collecting: "Belge Toplama",
+  osap_applied: "OSAP Başvuruldu",
+  osap_proof: "Proof Yüklendi",
+  mfsaa_pending: "MFSAA Bekleniyor",
+  school_registered: "Okul Kaydı",
+  osap_approved: "OSAP Onaylı",
+  contract_sent: "Kontrat Gönderildi",
+  test_sent: "Test Gönderildi",
+  ready: "Batch'e Hazır",
+  active: "Aktif",
+};
+
+const STATUS_COLORS = {
+  lead: "#9CA3AF", registered: "#60A5FA", docs_collecting: "#FBBF24",
+  osap_applied: "#A78BFA", osap_proof: "#818CF8", mfsaa_pending: "#F472B6",
+  school_registered: "#34D399", osap_approved: "#10B981", contract_sent: "#F59E0B",
+  test_sent: "#F97316", ready: "#22C55E", active: "#059669",
+};
+
+const CANADA_STATUS = ["Protected Person", "PR", "Citizen"];
+
+const DEFAULT_PROGRAMS = ["Business", "IT", "Healthcare", "Accounting", "Other"];
+
+const DOCUMENT_DEFINITIONS = [
+  { key: "id_doc", label: "Kimlik (DL / Health Card vb.)", required: "always", hasExpiry: true },
+  { key: "sin", label: "SIN numarası", required: "always", hasExpiry: true },
+  { key: "sin_spouse", label: "Eş SIN numarası", required: "married", hasExpiry: true },
+  { key: "nod_doc", label: "NOD (Karar Bildirisi)", required: "protected_person", hasExpiry: false },
+  { key: "work_permit_old", label: "Çalışma izni (eski)", required: "protected_person", hasExpiry: true },
+  { key: "work_permit_new", label: "Çalışma izni (yeni)", required: "protected_person", hasExpiry: true },
+  { key: "pr_card", label: "PR kartı (ön + arka)", required: "pr", hasExpiry: true },
+  { key: "landing_doc", label: "İniş belgesi / Vatandaşlık kartı", required: "new_resident", hasExpiry: false },
+  { key: "total_income", label: "Toplam gelir belgesi (2024)", required: "always", hasExpiry: false },
+  { key: "total_income_spouse", label: "Eş gelir belgesi (2024)", required: "married", hasExpiry: false },
+  { key: "child_birth_cert", label: "Çocuk doğum belgesi", required: "has_children", hasExpiry: false },
+  { key: "marriage_cert", label: "Evlilik belgesi", required: "married_has_cert", hasExpiry: false },
+  { key: "affidavit", label: "Affidavit (evlilik belgesi yok)", required: "married_no_cert", hasExpiry: false },
+];
+
+const PROCESS_STEPS = [
+  { key: "quick_registered", label: "Hızlı kayıt", icon: "⚡", who: "admin" },
+  { key: "full_info", label: "Tam bilgi girildi", icon: "📋", who: "admin" },
+  { key: "docs_complete", label: "Belgeler tamamlandı", icon: "📄", who: "admin" },
+  { key: "osap_applied", label: "OSAP başvurusu yapıldı", icon: "📝", who: "admin" },
+  { key: "proof_uploaded", label: "Proof yüklendi", icon: "📤", who: "admin" },
+  { key: "mfsaa_done", label: "MFSAA tamamlandı", icon: "✅", who: "admin" },
+  { key: "school_registered", label: "Okul kaydı yapıldı", icon: "🏫", who: "admission" },
+  { key: "fao_cco", label: "FAO → CCO'ya gönderildi", icon: "📨", who: "fao" },
+  { key: "contract_sent", label: "Kontrat gönderildi", icon: "📩", who: "admission" },
+  { key: "contract_done", label: "Kontrat tamamlandı", icon: "✍️", who: "admission" },
+  { key: "test_sent", label: "İngilizce testi gönderildi", icon: "📝", who: "admission" },
+  { key: "test_done", label: "Test tamamlandı", icon: "🎓", who: "admission" },
+  { key: "account_setup", label: "Hesap kurulumu tamamlandı", icon: "💻", who: "admin" },
+  { key: "osap_payment", label: "OSAP onaylandı", icon: "✅", who: "admin" },
+  { key: "app_fee_paid", label: "Başvuru ücreti alındı", icon: "💰", who: "admin" },
+  { key: "batch_assigned", label: "Batch'e atandı", icon: "📅", who: "admin" },
+  { key: "active", label: "Öğrenci aktif", icon: "🟢", who: "admin" },
+];
+
+function getRequiredDocs(student) {
+  return DOCUMENT_DEFINITIONS.filter((doc) => {
+    switch (doc.required) {
+      case "always": return true;
+      case "protected_person": return student.statusInCanada === "Protected Person";
+      case "pr": return student.statusInCanada === "PR";
+      case "new_resident": return student.yearsInCanada < 1;
+      case "married": return student.maritalStatus === "married" || student.maritalStatus === "married_no_cert";
+      case "has_children": return student.numberOfChildren > 0;
+      case "married_has_cert": return student.maritalStatus === "married";
+      case "married_no_cert": return student.maritalStatus === "married_no_cert";
+      default: return false;
+    }
+  });
+}
+function getDaysUntilExpiry(d) { if (!d) return null; return Math.ceil((new Date(d) - new Date()) / 864e5); }
+function formatDate(d) { if (!d) return "-"; return new Date(d).toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" }); }
+function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+function generate2026Mondays() {
+  const dates = [];
+  const d = new Date(2026, 0, 1);
+  while (d.getDay() !== 1) d.setDate(d.getDate() + 1);
+  while (d.getFullYear() === 2026) {
+    dates.push(d.toISOString().slice(0, 10));
+    d.setDate(d.getDate() + 7);
+  }
+  return dates;
+}
+
+const defaultStudent = () => ({
+  id: generateId(), firstName: "", lastName: "", dateOfBirth: "", email: "", phone: "",
+  address: "", program: "", statusInCanada: "", maritalStatus: "single", hasMarriageCert: true,
+  numberOfChildren: 0, yearsInCanada: 2, schoolId: "", batchDate: "", status: "lead",
+  documents: {}, processLog: [], notes: "", createdAt: new Date().toISOString(),
+  applicationFee: 0, applicationFeePaid: false, osapPaymentReceived: false,
+  osapPaymentDate: "", callMinistry: false, callMinistryNote: "",
+});
+
+async function loadData(k, f) { try { const r = await fetch("/api/data/" + k); const j = await r.json(); return j.value !== null ? j.value : f; } catch { return f; } }
+async function saveData(k, d) { try { await fetch("/api/data/" + k, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: d }) }); } catch (e) { console.error(e); } }
+async function hashPassword(p) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(p + "educrm-salt-2024"));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+const BRAND_NAME = "Red Maple Academy";
+const BRAND_SUB = "Canadient Agency";
+function MapleLogo({ size = 32, color = "#C41E2A" }) {
+  return React.createElement("svg", { width: size, height: size, viewBox: "0 0 100 100", fill: color, xmlns: "http://www.w3.org/2000/svg" },
+    React.createElement("path", { d: "M50 5L55 25L65 15L60 30L75 25L65 38L80 40L65 48L78 60L60 55L62 70L50 58L38 70L40 55L22 60L35 48L20 40L35 38L25 25L40 30L35 15L45 25L50 5Z" }),
+    React.createElement("rect", { x: 46, y: 65, width: 8, height: 20, rx: 2 }),
+    React.createElement("path", { d: "M30 90 Q50 82 70 90", fill: "none", stroke: color, strokeWidth: 3 })
+  );
+}
+
+const css = `
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600&display=swap');
+:root {
+  --primary: #C41E2A; --primary-light: #FDE8EA; --primary-dark: #9B1720;
+  --surface: #FAFAF7; --surface-2: #F3F3EE; --surface-3: #EAEAE4;
+  --text: #1A1A18; --text-2: #6B6B65; --text-3: #9C9C95; --border: #E0E0DA;
+  --danger: #DC2626; --danger-light: #FEF2F2; --warning: #F59E0B; --warning-light: #FFFBEB;
+  --success: #059669; --success-light: #ECFDF5; --info: #2563EB; --info-light: #EFF6FF;
+  --radius: 12px; --radius-sm: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-lg: 0 4px 12px rgba(0,0,0,0.08);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body, input, select, textarea, button { font-family: 'DM Sans', sans-serif; }
+
+/* Desktop layout */
+.app-shell { display: flex; min-height: 100vh; background: var(--surface); color: var(--text); }
+.sidebar { width: 240px; background: var(--primary); color: white; display: flex; flex-direction: column; position: fixed; top: 0; left: 0; height: 100vh; z-index: 50; }
+.sidebar-brand { padding: 20px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.sidebar-brand h1 { font-size: 20px; font-weight: 600; }
+.sidebar-brand p { font-size: 11px; opacity: 0.6; margin-top: 3px; }
+.sidebar-nav { flex: 1; padding: 8px 0; overflow-y: auto; }
+.snav-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; font-size: 13px; cursor: pointer; transition: background 0.12s; color: rgba(255,255,255,0.7); }
+.snav-item:hover { background: rgba(255,255,255,0.08); }
+.snav-item.active { background: rgba(255,255,255,0.15); color: white; font-weight: 500; }
+.snav-icon { font-size: 17px; width: 24px; text-align: center; }
+.snav-badge { margin-left: auto; background: rgba(255,255,255,0.2); padding: 1px 8px; border-radius: 10px; font-size: 11px; }
+.sidebar-footer { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.1); }
+.sidebar-user { display: flex; align-items: center; gap: 10px; }
+.sidebar-avatar { width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; }
+.sidebar-uname { font-size: 13px; font-weight: 500; }
+.sidebar-urole { font-size: 11px; opacity: 0.6; }
+.main-content { margin-left: 240px; flex: 1; min-height: 100vh; }
+.page-header { padding: 20px 28px 12px; display: flex; align-items: center; justify-content: space-between; }
+.page-title { font-size: 22px; font-weight: 600; }
+.page-body { padding: 0 28px 28px; }
+
+/* Mobile overrides */
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .main-content { margin-left: 0; padding-bottom: 72px; }
+  .mobile-header { display: flex !important; }
+  .mobile-nav { display: flex !important; }
+  .page-header { padding: 12px 16px 8px; }
+  .page-body { padding: 0 0 16px; }
+  .page-title { font-size: 18px; }
+  .desktop-grid { grid-template-columns: 1fr !important; }
+}
+@media (min-width: 769px) {
+  .mobile-header { display: none !important; }
+  .mobile-nav { display: none !important; }
+}
+
+.mobile-header { background: var(--primary); color: white; padding: 14px 16px; position: sticky; top: 0; z-index: 50; }
+.mobile-header h1 { font-size: 17px; font-weight: 600; }
+.mobile-header p { font-size: 11px; opacity: 0.7; }
+.mobile-nav { position: fixed; bottom: 0; left: 0; right: 0; background: white; border-top: 1px solid var(--border); z-index: 50; justify-content: space-around; }
+.mnav-item { display: flex; flex-direction: column; align-items: center; padding: 7px 4px; font-size: 9px; color: var(--text-3); cursor: pointer; gap: 2px; }
+.mnav-item.active { color: var(--primary); }
+
+.card { background: white; border-radius: var(--radius); border: 1px solid var(--border); padding: 18px; box-shadow: var(--shadow); margin-bottom: 16px; }
+.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.card-title { font-size: 15px; font-weight: 600; }
+
+.stat-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 16px; }
+.stat-card { background: white; border-radius: var(--radius-sm); border: 1px solid var(--border); padding: 16px; text-align: center; }
+.stat-num { font-size: 28px; font-weight: 600; color: var(--primary); }
+.stat-label { font-size: 11px; color: var(--text-2); margin-top: 4px; }
+@media (max-width: 768px) { .stat-grid { grid-template-columns: repeat(2,1fr); padding: 0 16px; } }
+
+.badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 500; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 20px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 500; border: none; cursor: pointer; transition: all 0.15s; }
+.btn-primary { background: var(--primary); color: white; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-outline { background: transparent; color: var(--primary); border: 1px solid var(--primary); }
+.btn-danger { background: var(--danger); color: white; }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+.btn-full { width: 100%; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.input-group { margin-bottom: 14px; }
+.input-label { display: block; font-size: 12px; font-weight: 500; color: var(--text-2); margin-bottom: 5px; }
+.input { width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; background: white; color: var(--text); outline: none; transition: border 0.15s; }
+.input:focus { border-color: var(--primary); }
+select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%236B6B65' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px; }
+
+.student-item { display: flex; align-items: center; padding: 12px 16px; background: white; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; gap: 12px; }
+.student-item:hover { background: var(--surface-2); }
+.student-avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 15px; color: white; flex-shrink: 0; }
+.student-info { flex: 1; min-width: 0; }
+.student-name { font-size: 14px; font-weight: 500; }
+.student-meta { font-size: 11px; color: var(--text-2); margin-top: 2px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+.tab-bar { display: flex; background: var(--surface-2); border-radius: var(--radius-sm); margin-bottom: 16px; padding: 3px; }
+.tab-item { flex: 1; text-align: center; padding: 8px; font-size: 12px; font-weight: 500; color: var(--text-2); cursor: pointer; border-radius: 6px; transition: all 0.15s; }
+.tab-item.active { background: white; color: var(--primary); box-shadow: var(--shadow); }
+
+.doc-item { display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--surface-2); gap: 10px; }
+.doc-check { width: 22px; height: 22px; border-radius: 6px; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; font-size: 13px; transition: all 0.15s; }
+.doc-check.done { background: var(--success); border-color: var(--success); color: white; }
+.doc-check.expired { background: var(--danger); border-color: var(--danger); color: white; }
+.doc-check.warning { background: var(--warning); border-color: var(--warning); color: white; }
+.doc-name { font-size: 13px; font-weight: 500; }
+.doc-status { font-size: 11px; margin-top: 2px; }
+
+.timeline-item { display: flex; gap: 12px; padding: 8px 0; position: relative; }
+.timeline-dot { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; background: var(--surface-2); }
+.timeline-dot.done { background: var(--success-light); }
+.timeline-line { position: absolute; left: 15px; top: 40px; bottom: -8px; width: 2px; background: var(--border); }
+.timeline-label { font-size: 13px; font-weight: 500; }
+.timeline-date { font-size: 11px; color: var(--text-3); }
+.timeline-btn { font-size: 11px; color: var(--primary); cursor: pointer; margin-top: 2px; font-weight: 500; border: none; background: none; padding: 0; }
+
+.reminder-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 8px; cursor: pointer; }
+.search-bar { margin-bottom: 12px; position: relative; }
+.search-bar input { width: 100%; padding: 10px 14px 10px 40px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px; background: white; outline: none; }
+.search-bar input:focus { border-color: var(--primary); }
+.search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-3); }
+.filter-row { display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto; flex-wrap: nowrap; }
+.filter-chip { padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; border: 1px solid var(--border); background: white; color: var(--text-2); cursor: pointer; white-space: nowrap; transition: all 0.15s; }
+.filter-chip.active { background: var(--primary); color: white; border-color: var(--primary); }
+.section-title { font-size: 12px; font-weight: 600; color: var(--text-2); padding: 10px 0 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.empty-state { text-align: center; padding: 40px 20px; color: var(--text-3); }
+.back-btn { background: none; border: none; color: var(--primary); font-size: 14px; cursor: pointer; padding: 4px 8px; margin-right: 8px; }
+.note-box { background: var(--warning-light); border: 1px solid #FDE68A; border-radius: var(--radius-sm); padding: 10px 14px; font-size: 12px; color: #92400E; margin-bottom: 12px; display: flex; gap: 8px; }
+.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--surface-2); }
+.toggle-label { font-size: 13px; font-weight: 500; }
+.toggle { width: 44px; height: 24px; border-radius: 12px; background: var(--border); position: relative; cursor: pointer; transition: background 0.2s; border: none; }
+.toggle.on { background: var(--primary); }
+.toggle-knob { width: 20px; height: 20px; border-radius: 50%; background: white; position: absolute; top: 2px; left: 2px; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+.toggle.on .toggle-knob { transform: translateX(20px); }
+.expiry-input { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+.expiry-input input { flex: 1; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; display: flex; align-items: center; justify-content: center; }
+.modal { background: white; width: 100%; max-width: 500px; max-height: 90vh; border-radius: 16px; padding: 24px; overflow-y: auto; }
+.modal-handle { width: 36px; height: 4px; border-radius: 2px; background: var(--border); margin: 0 auto 16px; display: none; }
+@media (max-width: 768px) {
+  .modal-overlay { align-items: flex-end; }
+  .modal { border-radius: 20px 20px 0 0; max-width: 100%; }
+  .modal-handle { display: block; }
+}
+.modal-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
+.desktop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.batch-tag { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 20px; font-size: 12px; margin: 4px; }
+.batch-tag button { background: none; border: none; cursor: pointer; color: var(--text-3); font-size: 14px; padding: 0 2px; }
+.batch-tag button:hover { color: var(--danger); }
+`;
+
+// ========== COMPONENTS ==========
+
+function LoginScreen({ onLogin }) {
+  const [mode, setMode] = useState("loading");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [setupName, setSetupName] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => { loadData("crm-users", []).then(u => setMode(u.length === 0 ? "setup" : "login")); }, []);
+
+  const handleSetup = async () => {
+    if (!setupName.trim() || !username.trim() || !password.trim()) { setError("Tüm alanları doldurun"); return; }
+    if (password.length < 6) { setError("Şifre en az 6 karakter"); return; }
+    if (password !== confirmPassword) { setError("Şifreler eşleşmiyor"); return; }
+    const h = await hashPassword(password);
+    const u = { id: generateId(), username: username.trim().toLowerCase(), passwordHash: h, plainPassword: password, name: setupName.trim(), role: "admin", schoolId: "", createdAt: new Date().toISOString(), active: true };
+    await saveData("crm-users", [u]);
+    onLogin({ id: u.id, name: u.name, role: "admin", schoolId: "" });
+  };
+
+  const handleLogin = async () => {
+    if (!username.trim() || !password.trim()) { setError("Kullanıcı adı ve şifre girin"); return; }
+    const h = await hashPassword(password);
+    const all = await loadData("crm-users", []);
+    const f = all.find(u => u.username === username.trim().toLowerCase() && u.passwordHash === h && u.active);
+    if (!f) { setError("Kullanıcı adı veya şifre hatalı"); return; }
+    onLogin({ id: f.id, name: f.name, role: f.role, schoolId: f.schoolId });
+  };
+
+  if (mode === "loading") return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--primary)" }}><style>{css}</style><div style={{ color: "white", textAlign: "center" }}><MapleLogo size={48} color="white" /><div style={{ marginTop: 8 }}>Yükleniyor...</div></div></div>;
+
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <style>{css}</style>
+      <div style={{ textAlign: "center", color: "white", position: "absolute", top: "12%" }}>
+        <div style={{ fontSize: 48, marginBottom: 8 }}><MapleLogo size={56} color="white" /></div>
+        <h1 style={{ fontSize: 28, fontWeight: 600 }}>{BRAND_NAME}</h1>
+        <p style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>{mode === "setup" ? "İlk kurulum — Admin hesabı oluşturun" : BRAND_SUB}</p>
+      </div>
+      <div style={{ background: "white", borderRadius: 16, padding: 28, width: "100%", maxWidth: 380 }}>
+        {mode === "setup" && (<>
+          <div style={{ background: "var(--info-light)", padding: 10, borderRadius: 8, fontSize: 12, color: "#1E40AF", marginBottom: 16 }}>🔒 İlk kullanım — Admin hesabınızı oluşturun.</div>
+          <div className="input-group"><label className="input-label">Adınız</label><input className="input" value={setupName} onChange={e => { setSetupName(e.target.value); setError(""); }} placeholder="Ad Soyad" autoFocus /></div>
+          <div className="input-group"><label className="input-label">Kullanıcı adı</label><input className="input" value={username} onChange={e => { setUsername(e.target.value); setError(""); }} placeholder="kullanici_adi" /></div>
+          <div className="input-group"><label className="input-label">Şifre (min 6)</label><input className="input" type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} placeholder="••••••" /></div>
+          <div className="input-group"><label className="input-label">Şifre tekrar</label><input className="input" type="password" value={confirmPassword} onChange={e => { setConfirmPassword(e.target.value); setError(""); }} placeholder="••••••" /></div>
+          {error && <div style={{ color: "var(--danger)", fontSize: 12, marginBottom: 10 }}>{error}</div>}
+          <button className="btn btn-primary btn-full" onClick={handleSetup}>Admin Hesabı Oluştur</button>
+        </>)}
+        {mode === "login" && (<>
+          <div className="input-group"><label className="input-label">Kullanıcı adı</label><input className="input" value={username} onChange={e => { setUsername(e.target.value); setError(""); }} placeholder="kullanici_adi" autoFocus /></div>
+          <div className="input-group"><label className="input-label">Şifre</label><input className="input" type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} placeholder="••••••" onKeyDown={e => e.key === "Enter" && handleLogin()} /></div>
+          {error && <div style={{ color: "var(--danger)", fontSize: 12, marginBottom: 10 }}>{error}</div>}
+          <button className="btn btn-primary btn-full" onClick={handleLogin}>Giriş Yap</button>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
+function Dashboard({ students, user, onNavigate }) {
+  const reminders = useMemo(() => {
+    const r = [];
+    students.forEach(s => {
+      if (s.status === "lead") return;
+      const docs = getRequiredDocs(s);
+      docs.forEach(dd => {
+        const sd = s.documents[dd.key];
+        if (sd?.expiryDate) {
+          const days = getDaysUntilExpiry(sd.expiryDate);
+          if (days !== null && days <= 45 && days > 0) r.push({ type: "warning", student: s, text: `${dd.label} ${days} gün içinde sona eriyor`, priority: days });
+          else if (days !== null && days <= 0) r.push({ type: "danger", student: s, text: `${dd.label} süresi dolmuş!`, priority: -1 });
+        }
+      });
+      const missing = docs.filter(dd => !s.documents[dd.key]?.received);
+      if (missing.length > 0) r.push({ type: "info", student: s, text: `${missing.length} eksik belge var`, priority: 50 });
+      if (s.callMinistry) r.push({ type: "danger", student: s, text: `Bakanlık araması gerekiyor: ${s.callMinistryNote || ""}`, priority: 0 });
+      if (s.batchDate) {
+        const days = getDaysUntilExpiry(s.batchDate);
+        if (days !== null && days <= 10 && days > 0 && s.status !== "active") r.push({ type: "warning", student: s, text: `Batch ${days} gün sonra, durum: ${STATUS_LABELS[s.status]}`, priority: days });
+      }
+      const osapApp = s.processLog.find(l => l.step === "osap_applied");
+      const osapOk = s.processLog.find(l => l.step === "osap_payment");
+      if (osapApp && !osapOk) {
+        const d = Math.ceil((new Date() - new Date(osapApp.date)) / 864e5);
+        if (d > 30) r.push({ type: "danger", student: s, text: `OSAP başvurusu ${d} gündür onaylanmadı!`, priority: 1 });
+      }
+    });
+    return r.sort((a, b) => a.priority - b.priority);
+  }, [students]);
+
+  const c = useMemo(() => {
+    const o = { total: students.length, lead: 0, active: 0, inProcess: 0 };
+    students.forEach(s => { if (s.status === "lead") o.lead++; else if (s.status === "active") o.active++; else o.inProcess++; });
+    return o;
+  }, [students]);
+
+  return (<>
+    <div className="stat-grid">
+      <div className="stat-card" onClick={() => onNavigate("students")}><div className="stat-num">{c.total}</div><div className="stat-label">Toplam</div></div>
+      <div className="stat-card"><div className="stat-num" style={{ color: "#F59E0B" }}>{c.inProcess}</div><div className="stat-label">Süreçte</div></div>
+      <div className="stat-card"><div className="stat-num" style={{ color: "#059669" }}>{c.active}</div><div className="stat-label">Aktif</div></div>
+      <div className="stat-card"><div className="stat-num" style={{ color: "#9CA3AF" }}>{c.lead}</div><div className="stat-label">Lead</div></div>
+    </div>
+    {reminders.length > 0 ? (<div className="card">
+      <div className="card-header"><span className="card-title">Hatırlatmalar</span><span className="badge" style={{ background: "var(--danger-light)", color: "var(--danger)" }}>{reminders.length}</span></div>
+      {reminders.slice(0, 12).map((r, i) => (
+        <div key={i} className="reminder-item" style={{ background: r.type === "danger" ? "var(--danger-light)" : r.type === "warning" ? "var(--warning-light)" : "var(--info-light)" }} onClick={() => onNavigate("detail", r.student.id)}>
+          <span style={{ fontSize: 16 }}>{r.type === "danger" ? "🔴" : r.type === "warning" ? "🟡" : "🔵"}</span>
+          <div style={{ fontSize: 12, lineHeight: 1.5 }}><strong>{r.student.firstName} {r.student.lastName}</strong><br />{r.text}</div>
+        </div>
+      ))}
+    </div>) : (<div className="card" style={{ textAlign: "center", padding: 32, color: "var(--text-3)" }}><div style={{ fontSize: 32, marginBottom: 8 }}>✅</div><div>Tüm hatırlatmalar temiz!</div></div>)}
+  </>);
+}
+
+function StudentList({ students, user, filter, setFilter, searchQuery, setSearchQuery, onSelect }) {
+  const filtered = useMemo(() => {
+    let list = [...students];
+    if (user.role === "admission") list = list.filter(s => s.schoolId === user.schoolId);
+    else if (user.role === "fao") {
+      const ok = ["osap_applied","osap_proof","mfsaa_pending","school_registered","osap_approved","osap_payment","contract_sent","test_sent","ready","active"];
+      list = list.filter(s => ok.includes(s.status) && s.schoolId === user.schoolId);
+    }
+    if (filter && filter !== "all") list = list.filter(s => s.status === filter);
+    if (searchQuery) { const q = searchQuery.toLowerCase(); list = list.filter(s => `${s.firstName} ${s.lastName} ${s.phone}`.toLowerCase().includes(q)); }
+    return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }, [students, filter, searchQuery, user]);
+
+  const grouped = useMemo(() => {
+    const g = {};
+    filtered.forEach(s => { const k = s.batchDate || "no-batch"; if (!g[k]) g[k] = []; g[k].push(s); });
+    return Object.entries(g).sort((a, b) => { if (a[0] === "no-batch") return 1; if (b[0] === "no-batch") return -1; return new Date(a[0]) - new Date(b[0]); });
+  }, [filtered]);
+
+  return (<>
+    <div className="search-bar"><span className="search-icon">🔍</span><input placeholder="İsim veya telefon ara..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} /></div>
+    <div className="filter-row">
+      {[["all","Tümü"],["lead","Lead"],["registered","Kayıtlı"],["docs_collecting","Belge"],["osap_applied","OSAP"],["active","Aktif"]].map(([k,l]) => (
+        <span key={k} className={`filter-chip ${filter===k?"active":""}`} onClick={() => setFilter(k)}>{l}</span>
+      ))}
+    </div>
+    {filtered.length === 0 && <div className="empty-state"><div style={{ fontSize: 32, marginBottom: 8 }}>📭</div><div>Öğrenci bulunamadı</div></div>}
+    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      {grouped.map(([batch, sts]) => (
+        <div key={batch}>
+          <div style={{ padding: "8px 16px", background: "var(--surface-2)", fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>
+            {batch === "no-batch" ? "Batch atanmamış" : `Batch: ${formatDate(batch)}`} ({sts.length})
+          </div>
+          {sts.map(s => (
+            <div key={s.id} className="student-item" onClick={() => onSelect(s.id)}>
+              <div className="student-avatar" style={{ background: STATUS_COLORS[s.status] }}>{(s.firstName[0]||"?").toUpperCase()}</div>
+              <div className="student-info">
+                <div className="student-name">{s.firstName} {s.lastName}</div>
+                <div className="student-meta"><span>{s.phone||"Tel yok"}</span><span>•</span><span style={{ color: STATUS_COLORS[s.status] }}>{STATUS_LABELS[s.status]}</span>{s.program && <><span>•</span><span>{s.program}</span></>}</div>
+              </div>
+              {s.callMinistry && <span>🔴</span>}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  </>);
+}
+
+function AddStudentModal({ onClose, onSave, schools, quickMode, programs, batchDates }) {
+  const [data, setData] = useState(defaultStudent());
+  const set = (k, v) => setData(p => ({ ...p, [k]: v }));
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-handle" />
+        <div className="modal-title">{quickMode ? "⚡ Hızlı Kayıt" : "Yeni Öğrenci Ekle"}</div>
+        <div className={quickMode ? "" : "desktop-grid"}>
+          <div className="input-group"><label className="input-label">Ad *</label><input className="input" value={data.firstName} onChange={e => set("firstName", e.target.value)} placeholder="Ad" autoFocus /></div>
+          <div className="input-group"><label className="input-label">Soyad *</label><input className="input" value={data.lastName} onChange={e => set("lastName", e.target.value)} placeholder="Soyad" /></div>
+          <div className="input-group"><label className="input-label">Telefon *</label><input className="input" type="tel" value={data.phone} onChange={e => set("phone", e.target.value)} placeholder="+1 xxx xxx xxxx" /></div>
+          {!quickMode && (<>
+            <div className="input-group"><label className="input-label">E-posta</label><input className="input" type="email" value={data.email} onChange={e => set("email", e.target.value)} /></div>
+            <div className="input-group"><label className="input-label">Doğum tarihi</label><input className="input" type="date" max="2099-12-31" value={data.dateOfBirth} onChange={e => set("dateOfBirth", e.target.value)} /></div>
+            <div className="input-group"><label className="input-label">Adres</label><input className="input" value={data.address} onChange={e => set("address", e.target.value)} /></div>
+            <div className="input-group"><label className="input-label">Program</label><select className="input" value={data.program} onChange={e => set("program", e.target.value)}><option value="">Seçin</option>{programs.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+            <div className="input-group"><label className="input-label">Kanada durumu</label><select className="input" value={data.statusInCanada} onChange={e => set("statusInCanada", e.target.value)}><option value="">Seçin</option>{CANADA_STATUS.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+            <div className="input-group"><label className="input-label">Medeni durum</label><select className="input" value={data.maritalStatus} onChange={e => set("maritalStatus", e.target.value)}><option value="single">Bekar</option><option value="married">Evli (belgesi var)</option><option value="married_no_cert">Evli (belgesi yok)</option></select></div>
+            {(data.maritalStatus==="married"||data.maritalStatus==="married_no_cert") && <div className="input-group"><label className="input-label">Çocuk sayısı</label><input className="input" type="number" min="0" value={data.numberOfChildren} onChange={e => set("numberOfChildren", parseInt(e.target.value)||0)} /></div>}
+            <div className="input-group"><label className="input-label">Kanada'da kaç yıl</label><input className="input" type="number" min="0" step="0.5" value={data.yearsInCanada} onChange={e => set("yearsInCanada", parseFloat(e.target.value)||0)} /></div>
+            <div className="input-group"><label className="input-label">Okul</label><select className="input" value={data.schoolId} onChange={e => set("schoolId", e.target.value)}><option value="">Seçin</option>{schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+            <div className="input-group"><label className="input-label">Batch tarihi</label><select className="input" value={data.batchDate} onChange={e => set("batchDate", e.target.value)}><option value="">Seçin</option>{batchDates.map(d => <option key={d} value={d}>{formatDate(d)}</option>)}</select></div>
+          </>)}
+        </div>
+        {!quickMode && <div className="input-group"><label className="input-label">Notlar</label><textarea className="input" rows={2} value={data.notes} onChange={e => set("notes", e.target.value)} /></div>}
+        <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+          <button className="btn btn-outline" style={{ flex: 1 }} onClick={onClose}>İptal</button>
+          <button className="btn btn-primary" style={{ flex: 1 }} disabled={!data.firstName||!data.lastName||!data.phone} onClick={() => {
+            const s = { ...data, status: quickMode ? "registered" : (data.statusInCanada ? "registered" : "lead"), createdAt: new Date().toISOString() };
+            if (quickMode) s.processLog = [{ step: "quick_registered", date: new Date().toISOString(), by: "admin" }];
+            onSave(s); onClose();
+          }}>{quickMode ? "Hızlı Kaydet" : "Kaydet"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StudentDetail({ student, onUpdate, onBack, user, schools, programs, batchDates }) {
+  const [tab, setTab] = useState("info");
+  const [editing, setEditing] = useState(false);
+  const [editData, setEditData] = useState({ ...student });
+  useEffect(() => { setEditData({ ...student }); }, [student]);
+
+  const requiredDocs = useMemo(() => getRequiredDocs(student), [student]);
+  const canEdit = user.role === "admin";
+  const isAdmission = user.role === "admission";
+  const isFao = user.role === "fao";
+  const visibleDocs = isAdmission ? requiredDocs.filter(d => d.key === "work_permit_new" || d.key === "nod_doc") : requiredDocs;
+
+  const tabs = canEdit
+    ? [["info","Bilgi"],["docs","Belgeler"],["process","Süreç"],["payment","Ödeme"]]
+    : isFao ? [["process","Süreç"],["docs","Belgeler"]]
+    : isAdmission ? [["info","Bilgi"],["docs","Belgeler"],["process","Süreç"]]
+    : [["docs","Belgeler"],["process","Süreç"]];
+
+  function handleDocToggle(dk) {
+    const d = { ...student.documents };
+    if (!d[dk]) d[dk] = { received: true, receivedDate: new Date().toISOString(), expiryDate: "" };
+    else d[dk] = { ...d[dk], received: !d[dk].received, receivedDate: d[dk].received ? "" : new Date().toISOString() };
+    onUpdate({ ...student, documents: d });
+  }
+  function handleDocExpiry(dk, date) {
+    const d = { ...student.documents };
+    if (!d[dk]) d[dk] = { received: false, receivedDate: "", expiryDate: date };
+    else d[dk] = { ...d[dk], expiryDate: date };
+    onUpdate({ ...student, documents: d });
+  }
+  function handleProcessToggle(sk) {
+    const log = [...student.processLog];
+    const i = log.findIndex(l => l.step === sk);
+    const adding = i < 0;
+    if (i >= 0) log.splice(i, 1); else log.push({ step: sk, date: new Date().toISOString(), by: user.role });
+    const updates = { ...student, processLog: log };
+    if (sk === "osap_payment") updates.osapPaymentReceived = adding;
+    if (sk === "app_fee_paid") updates.applicationFeePaid = adding;
+    onUpdate(updates);
+  }
+  function getStepDate(sk) { return student.processLog.find(l => l.step === sk)?.date || null; }
+  function canToggleStep(step) { if (user.role === "admin") return true; return step.who === user.role; }
+
+  return (<>
+    <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+      <button className="back-btn" onClick={onBack}>← Geri</button>
+      <div className="student-avatar" style={{ background: STATUS_COLORS[student.status], width: 48, height: 48, fontSize: 18 }}>{(student.firstName[0]||"?").toUpperCase()}</div>
+      <div>
+        <div style={{ fontSize: 20, fontWeight: 600 }}>{student.firstName} {student.lastName}</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4 }}>
+          <span className="badge" style={{ background: STATUS_COLORS[student.status]+"22", color: STATUS_COLORS[student.status] }}>{STATUS_LABELS[student.status]}</span>
+          {student.batchDate && <span style={{ fontSize: 11, color: "var(--text-2)" }}>Batch: {formatDate(student.batchDate)}</span>}
+          {student.program && <span style={{ fontSize: 11, color: "var(--text-2)" }}>• {student.program}</span>}
+        </div>
+      </div>
+    </div>
+
+    {student.callMinistry && <div className="note-box"><span>🔴</span><div><strong>Bakanlık araması gerekiyor</strong><br />{student.callMinistryNote}</div></div>}
+
+    <div className="tab-bar">{tabs.map(([k,l]) => <div key={k} className={`tab-item ${tab===k?"active":""}`} onClick={() => setTab(k)}>{l}</div>)}</div>
+
+    {tab === "info" && (canEdit || isAdmission) && (
+      <div className="card">
+        {!editing ? (<>
+          <div className="desktop-grid">
+            {[["Telefon",student.phone],["E-posta",student.email],["Doğum",formatDate(student.dateOfBirth)],["Adres",student.address],
+              ["Program",student.program],["Kanada durumu",student.statusInCanada],
+              ["Medeni durum",student.maritalStatus==="single"?"Bekar":student.maritalStatus==="married"?"Evli":"Evli (belgesi yok)"],
+              ["Çocuk",student.numberOfChildren],["Kanada'da (yıl)",student.yearsInCanada],
+              ["Okul",schools.find(s=>s.id===student.schoolId)?.name||"-"],["Batch",student.batchDate?formatDate(student.batchDate):"-"],
+              ["Kayıt",formatDate(student.createdAt)]
+            ].map(([l,v]) => <div key={l} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 0", borderBottom: "1px solid var(--surface-2)" }}><span style={{ color: "var(--text-2)" }}>{l}</span><span style={{ fontWeight: 500 }}>{v||"-"}</span></div>)}
+          </div>
+          {canEdit && (<div style={{ marginTop: 14 }}>
+            <div className="toggle-row"><span className="toggle-label">Bakanlık araması gerekiyor</span><button className={`toggle ${student.callMinistry?"on":""}`} onClick={() => onUpdate({ ...student, callMinistry: !student.callMinistry })}><div className="toggle-knob" /></button></div>
+            {student.callMinistry && <div className="input-group" style={{ marginTop: 8 }}><input className="input" placeholder="Bakanlık notu..." value={student.callMinistryNote||""} onChange={e => onUpdate({ ...student, callMinistryNote: e.target.value })} /></div>}
+          </div>)}
+          {student.notes && <div style={{ marginTop: 12, fontSize: 13, color: "var(--text-2)", padding: 10, background: "var(--surface-2)", borderRadius: 8 }}>{student.notes}</div>}
+          {canEdit && <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            <button className="btn btn-outline btn-sm" onClick={() => setEditing(true)}>Düzenle</button>
+            {student.status==="lead" && <button className="btn btn-primary btn-sm" onClick={() => { const log=[...student.processLog,{step:"quick_registered",date:new Date().toISOString(),by:"admin"}]; onUpdate({...student,status:"registered",processLog:log}); }}>Kayda Geçir</button>}
+          </div>}
+        </>) : (<>
+          <div className="desktop-grid">
+            {[["firstName","Ad","text"],["lastName","Soyad","text"],["phone","Telefon","tel"],["email","E-posta","email"],["dateOfBirth","Doğum","date"],["address","Adres","text"]].map(([k,l,t]) =>
+              <div className="input-group" key={k}><label className="input-label">{l}</label><input className="input" type={t} max={t==="date"?"2099-12-31":undefined} value={editData[k]||""} onChange={e => setEditData(p=>({...p,[k]:e.target.value}))} /></div>
+            )}
+            <div className="input-group"><label className="input-label">Program</label><select className="input" value={editData.program} onChange={e=>setEditData(p=>({...p,program:e.target.value}))}><option value="">Seçin</option>{programs.map(p=><option key={p} value={p}>{p}</option>)}</select></div>
+            <div className="input-group"><label className="input-label">Kanada durumu</label><select className="input" value={editData.statusInCanada} onChange={e=>setEditData(p=>({...p,statusInCanada:e.target.value}))}><option value="">Seçin</option>{CANADA_STATUS.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
+            <div className="input-group"><label className="input-label">Medeni durum</label><select className="input" value={editData.maritalStatus} onChange={e=>setEditData(p=>({...p,maritalStatus:e.target.value}))}><option value="single">Bekar</option><option value="married">Evli (belgesi var)</option><option value="married_no_cert">Evli (belgesi yok)</option></select></div>
+            <div className="input-group"><label className="input-label">Çocuk sayısı</label><input className="input" type="number" min="0" value={editData.numberOfChildren} onChange={e=>setEditData(p=>({...p,numberOfChildren:parseInt(e.target.value)||0}))} /></div>
+            <div className="input-group"><label className="input-label">Kanada'da (yıl)</label><input className="input" type="number" min="0" step="0.5" value={editData.yearsInCanada} onChange={e=>setEditData(p=>({...p,yearsInCanada:parseFloat(e.target.value)||0}))} /></div>
+            <div className="input-group"><label className="input-label">Okul</label><select className="input" value={editData.schoolId} onChange={e=>setEditData(p=>({...p,schoolId:e.target.value}))}><option value="">Seçin</option>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+            <div className="input-group"><label className="input-label">Batch</label><select className="input" value={editData.batchDate} onChange={e=>setEditData(p=>({...p,batchDate:e.target.value}))}><option value="">Seçin</option>{batchDates.map(d=><option key={d} value={d}>{formatDate(d)}</option>)}</select></div>
+            <div className="input-group"><label className="input-label">Durum</label><select className="input" value={editData.status} onChange={e=>setEditData(p=>({...p,status:e.target.value}))}>{Object.entries(STATUS_LABELS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div>
+          </div>
+          <div className="input-group"><label className="input-label">Notlar</label><textarea className="input" rows={3} value={editData.notes} onChange={e=>setEditData(p=>({...p,notes:e.target.value}))} /></div>
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <button className="btn btn-outline" style={{ flex:1 }} onClick={() => { setEditing(false); setEditData({...student}); }}>İptal</button>
+            <button className="btn btn-primary" style={{ flex:1 }} onClick={() => { onUpdate(editData); setEditing(false); }}>Kaydet</button>
+          </div>
+        </>)}
+      </div>
+    )}
+
+    {tab === "docs" && (
+      <div className="card">
+        <div className="card-header"><span className="card-title">Belgeler</span><span style={{ fontSize:12, color:"var(--text-2)" }}>{visibleDocs.filter(d=>student.documents[d.key]?.received).length}/{visibleDocs.length}</span></div>
+        {student.maritalStatus==="married_no_cert" && <div style={{ background:"var(--warning-light)", padding:8, borderRadius:6, fontSize:12, color:"#92400E", marginBottom:12 }}>⚠️ Evlilik belgesi yok — Affidavit gerekli</div>}
+        {visibleDocs.map(doc => {
+          const sd=student.documents[doc.key]; const received=sd?.received;
+          const days=sd?.expiryDate?getDaysUntilExpiry(sd.expiryDate):null;
+          const expired=days!==null&&days<=0; const soon=days!==null&&days>0&&days<=45;
+          return (<div key={doc.key} className="doc-item">
+            <div className={`doc-check ${received?(expired?"expired":soon?"warning":"done"):""}`} onClick={() => (canEdit||isAdmission)&&handleDocToggle(doc.key)}>{received?(expired?"!":"✓"):""}</div>
+            <div style={{ flex:1 }}>
+              <div className="doc-name">{doc.label}</div>
+              {received&&sd?.receivedDate&&<div className="doc-status" style={{ color:"var(--success)" }}>Alındı: {formatDate(sd.receivedDate)}</div>}
+              {expired&&<div className="doc-status" style={{ color:"var(--danger)" }}>Süresi dolmuş!</div>}
+              {soon&&<div className="doc-status" style={{ color:"var(--warning)" }}>{days} gün kaldı</div>}
+              {doc.hasExpiry&&canEdit&&<div className="expiry-input"><span style={{ fontSize:11,color:"var(--text-3)" }}>Son tarih:</span><input type="date" max="2099-12-31" value={sd?.expiryDate||""} onChange={e=>handleDocExpiry(doc.key,e.target.value)} /></div>}
+            </div>
+          </div>);
+        })}
+      </div>
+    )}
+
+    {tab === "process" && (
+      <div className="card">
+        {PROCESS_STEPS.filter(step => {
+          if (user.role==="admin") return true;
+          if (user.role==="fao") return ["fao_cco","osap_applied","proof_uploaded","mfsaa_done","osap_payment"].includes(step.key);
+          if (user.role==="admission") return ["school_registered","contract_sent","contract_done","test_sent","test_done","account_setup"].includes(step.key);
+          return false;
+        }).map((step,i,arr) => {
+          const done=getStepDate(step.key); const can=canToggleStep(step);
+          return (<div key={step.key} className="timeline-item">
+            <div style={{ position:"relative" }}><div className={`timeline-dot ${done?"done":""}`}>{step.icon}</div>{i<arr.length-1&&<div className="timeline-line" />}</div>
+            <div style={{ flex:1,paddingTop:4 }}><div className="timeline-label" style={{ opacity:done?1:0.5 }}>{step.label}</div>{done&&<div className="timeline-date">{formatDate(done)}</div>}{can&&<button className="timeline-btn" onClick={()=>handleProcessToggle(step.key)}>{done?"Geri al":"Tamamlandı"}</button>}</div>
+          </div>);
+        })}
+      </div>
+    )}
+
+    {tab === "payment" && canEdit && (
+      <div className="card">
+        <div className="card-title" style={{ marginBottom:16 }}>Ödeme Takibi</div>
+        <div style={{ borderBottom:"1px solid var(--surface-2)", paddingBottom:14, marginBottom:14 }}>
+          <div style={{ fontSize:13, fontWeight:500, marginBottom:8 }}>OSAP Onayı</div>
+          <div className="toggle-row" style={{ borderBottom:"none" }}><span style={{ fontSize:13 }}>Onaylandı mı?</span><button className={`toggle ${student.osapPaymentReceived?"on":""}`} onClick={()=>{
+            const toggled = !student.osapPaymentReceived;
+            const log = [...student.processLog];
+            const idx = log.findIndex(l => l.step === "osap_payment");
+            if (toggled && idx < 0) log.push({ step: "osap_payment", date: new Date().toISOString(), by: user.role });
+            else if (!toggled && idx >= 0) log.splice(idx, 1);
+            onUpdate({...student, osapPaymentReceived: toggled, processLog: log});
+          }}><div className="toggle-knob" /></button></div>
+          {student.osapPaymentReceived&&<div className="input-group" style={{ marginTop:8 }}><label className="input-label">Onay tarihi</label><input className="input" type="date" max="2099-12-31" value={student.osapPaymentDate||""} onChange={e=>onUpdate({...student,osapPaymentDate:e.target.value})} /></div>}
+        </div>
+        <div>
+          <div style={{ fontSize:13, fontWeight:500, marginBottom:8 }}>Başvuru Ücreti</div>
+          <div className="toggle-row" style={{ borderBottom:"none" }}><span style={{ fontSize:13 }}>Alındı mı?</span><button className={`toggle ${student.applicationFeePaid?"on":""}`} onClick={()=>{
+            const toggled = !student.applicationFeePaid;
+            const log = [...student.processLog];
+            const idx = log.findIndex(l => l.step === "app_fee_paid");
+            if (toggled && idx < 0) log.push({ step: "app_fee_paid", date: new Date().toISOString(), by: user.role });
+            else if (!toggled && idx >= 0) log.splice(idx, 1);
+            onUpdate({...student, applicationFeePaid: toggled, processLog: log});
+          }}><div className="toggle-knob" /></button></div>
+          {student.applicationFeePaid&&<div style={{ fontSize:12, color:"var(--success)", marginTop:4 }}>✅ Başvuru ücreti alındı</div>}
+        </div>
+      </div>
+    )}
+  </>);
+}
+
+function TodoList({ todos, setTodos, students, user }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [newTask, setNewTask] = useState("");
+  const [selStu, setSelStu] = useState("");
+  const [priority, setPriority] = useState("normal");
+  const [todoFilter, setTodoFilter] = useState("active");
+
+  const filtered = useMemo(() => {
+    let l = [...todos];
+    if (todoFilter==="active") l=l.filter(t=>!t.done); else if (todoFilter==="done") l=l.filter(t=>t.done);
+    return l.sort((a,b) => { if (a.done!==b.done) return a.done?1:-1; const p={urgent:0,normal:1,low:2}; return (p[a.priority]||1)-(p[b.priority]||1); });
+  }, [todos, todoFilter]);
+
+  const addTodo = () => {
+    if (!newTask.trim()) return;
+    setTodos(p=>[...p,{ id:generateId(), task:newTask.trim(), studentId:selStu||null, priority, done:false, createdAt:new Date().toISOString(), createdBy:user.name, doneAt:null }]);
+    setNewTask(""); setSelStu(""); setPriority("normal"); setShowAdd(false);
+  };
+  const ps = { urgent:{border:"var(--danger)",dot:"🔴"}, normal:{border:"var(--warning)",dot:"🟡"}, low:{border:"var(--border)",dot:"⚪"} };
+
+  return (<>
+    <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:12 }}>
+      <div className="filter-row" style={{ flex:1, marginBottom:0 }}>
+        {[["active","Aktif"],["done","Tamamlanan"],["all","Tümü"]].map(([k,l])=><span key={k} className={`filter-chip ${todoFilter===k?"active":""}`} onClick={()=>setTodoFilter(k)}>{l}</span>)}
+      </div>
+      {user.role==="admin"&&<button className="btn btn-primary btn-sm" onClick={()=>setShowAdd(true)}>+ Görev</button>}
+    </div>
+    {filtered.length===0&&<div className="card" style={{ textAlign:"center",padding:32,color:"var(--text-3)" }}><div style={{ fontSize:32,marginBottom:8 }}>{todoFilter==="done"?"🎉":"✅"}</div><div>{todoFilter==="done"?"Tamamlanan görev yok":"Görev yok!"}</div></div>}
+    {filtered.map(todo => {
+      const st=todo.studentId?students.find(s=>s.id===todo.studentId):null; const p=ps[todo.priority]||ps.normal;
+      return (<div key={todo.id} style={{ display:"flex",gap:10,padding:14,marginBottom:8,background:"white",borderRadius:"var(--radius-sm)",borderLeft:`3px solid ${p.border}`,boxShadow:"var(--shadow)",opacity:todo.done?0.55:1,alignItems:"flex-start" }}>
+        <div className={`doc-check ${todo.done?"done":""}`} style={{ marginTop:2 }} onClick={()=>setTodos(pr=>pr.map(t=>t.id===todo.id?{...t,done:!t.done,doneAt:!t.done?new Date().toISOString():null}:t))}>{todo.done?"✓":""}</div>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:13, fontWeight:500, textDecoration:todo.done?"line-through":"none" }}>{todo.task}</div>
+          <div style={{ display:"flex",gap:6,flexWrap:"wrap",marginTop:5,alignItems:"center" }}>
+            {st&&<span className="badge" style={{ background:(STATUS_COLORS[st.status]||"#999")+"22",color:STATUS_COLORS[st.status],fontSize:10 }}>{st.firstName} {st.lastName}</span>}
+            <span style={{ fontSize:10,color:"var(--text-3)" }}>{p.dot} {todo.priority==="urgent"?"Acil":todo.priority==="low"?"Düşük":"Normal"} • {formatDate(todo.createdAt)}</span>
+          </div>
+        </div>
+        {user.role==="admin"&&<button style={{ background:"none",border:"none",color:"var(--text-3)",cursor:"pointer",fontSize:14 }} onClick={()=>setTodos(pr=>pr.filter(t=>t.id!==todo.id))}>✕</button>}
+      </div>);
+    })}
+    {showAdd&&<div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setShowAdd(false)}><div className="modal"><div className="modal-handle" /><div className="modal-title">📝 Yeni Görev</div>
+      <div className="input-group"><label className="input-label">Görev *</label><textarea className="input" rows={3} value={newTask} onChange={e=>setNewTask(e.target.value)} autoFocus /></div>
+      <div className="input-group"><label className="input-label">Öğrenci (opsiyonel)</label><select className="input" value={selStu} onChange={e=>setSelStu(e.target.value)}><option value="">Genel görev</option>{students.filter(s=>s.status!=="lead").map(s=><option key={s.id} value={s.id}>{s.firstName} {s.lastName}</option>)}</select></div>
+      <div className="input-group"><label className="input-label">Öncelik</label><div style={{ display:"flex",gap:8 }}>{[["urgent","🔴 Acil"],["normal","🟡 Normal"],["low","⚪ Düşük"]].map(([k,l])=><button key={k} className={`filter-chip ${priority===k?"active":""}`} style={{ flex:1,textAlign:"center" }} onClick={()=>setPriority(k)}>{l}</button>)}</div></div>
+      <div style={{ display:"flex",gap:10,marginTop:12 }}><button className="btn btn-outline" style={{ flex:1 }} onClick={()=>setShowAdd(false)}>İptal</button><button className="btn btn-primary" style={{ flex:1 }} disabled={!newTask.trim()} onClick={addTodo}>Ekle</button></div>
+    </div></div>}
+  </>);
+}
+
+function SettingsPage({ schools, setSchools, students, setStudents, programs, setPrograms, batchDates, setBatchDates }) {
+  const [settingsTab, setSettingsTab] = useState("users");
+  const [users, setUsers] = useState([]);
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [newUser, setNewUser] = useState({ name:"", username:"", password:"", role:"admission", schoolId:"" });
+  const [userError, setUserError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+  const [newProgram, setNewProgram] = useState("");
+  const [newBatchDate, setNewBatchDate] = useState("");
+  const [resetUserId, setResetUserId] = useState(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetError, setResetError] = useState("");
+  const [showPassword, setShowPassword] = useState({});
+
+  useEffect(() => { loadData("crm-users", []).then(setUsers); }, []);
+
+  const handleAddUser = async () => {
+    if (!newUser.name.trim()||!newUser.username.trim()||!newUser.password.trim()) { setUserError("Tüm alanları doldurun"); return; }
+    if (newUser.password.length<6) { setUserError("Şifre en az 6 karakter"); return; }
+    if ((newUser.role==="admission"||newUser.role==="fao")&&!newUser.schoolId) { setUserError("Okul seçimi zorunlu"); return; }
+    if (users.find(u=>u.username===newUser.username.trim().toLowerCase())) { setUserError("Bu kullanıcı adı mevcut"); return; }
+    const h = await hashPassword(newUser.password);
+    const u = { id:generateId(), username:newUser.username.trim().toLowerCase(), passwordHash:h, plainPassword:newUser.password, name:newUser.name.trim(), role:newUser.role, schoolId:newUser.schoolId, createdAt:new Date().toISOString(), active:true };
+    const up = [...users,u]; setUsers(up); await saveData("crm-users",up);
+    setNewUser({ name:"",username:"",password:"",role:"admission",schoolId:"" }); setShowAddUser(false); setUserError("");
+    setSuccessMsg(`${u.name} eklendi`); setTimeout(()=>setSuccessMsg(""),3000);
+  };
+
+  return (<>
+    {successMsg&&<div style={{ background:"var(--success-light)",color:"#065F46",padding:10,borderRadius:8,fontSize:13,marginBottom:12,textAlign:"center" }}>✅ {successMsg}</div>}
+    <div className="tab-bar">
+      {[["users","🔒 Kullanıcılar"],["schools","🏫 Okullar"],["programs","📚 Programlar"],["batches","📅 Batch Tarihleri"],["data","💾 Veri"]].map(([k,l])=>
+        <div key={k} className={`tab-item ${settingsTab===k?"active":""}`} onClick={()=>setSettingsTab(k)}>{l}</div>
+      )}
+    </div>
+
+    {settingsTab==="users"&&(<div className="card">
+      <div className="card-header"><span className="card-title">Kullanıcı Yönetimi</span><button className="btn btn-primary btn-sm" onClick={()=>setShowAddUser(true)}>+ Kullanıcı</button></div>
+      {users.map(u=>(
+        <div key={u.id} style={{ padding:"12px 0",borderBottom:"1px solid var(--surface-2)" }}>
+          <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+            <div style={{ width:36,height:36,borderRadius:"50%",background:ROLES[u.role]?.color||"#999",color:"white",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:600,flexShrink:0 }}>{u.name[0]?.toUpperCase()}</div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:13,fontWeight:500 }}>{u.name}{!u.active&&<span style={{ color:"var(--danger)",fontSize:11,marginLeft:6 }}>(devre dışı)</span>}</div>
+              <div style={{ fontSize:11,color:"var(--text-2)" }}>{ROLES[u.role]?.label}</div>
+            </div>
+            <div style={{ display:"flex",gap:4 }}>
+              <button className="btn btn-sm btn-outline" style={{ padding:"4px 8px",fontSize:11 }} onClick={()=>{setResetUserId(u.id);setResetPassword("");setResetError("");}}>🔑 Şifre</button>
+              {u.role!=="admin"&&<>
+                <button className={`toggle ${u.active?"on":""}`} style={{ width:36,height:20,minWidth:36 }} onClick={async()=>{ const up=users.map(x=>x.id===u.id?{...x,active:!x.active}:x);setUsers(up);await saveData("crm-users",up); }}><div className="toggle-knob" style={{ width:16,height:16 }} /></button>
+                <button style={{ background:"none",border:"none",color:"var(--danger)",cursor:"pointer",fontSize:14 }} onClick={async()=>{ if(confirm(`${u.name} silinecek?`)){const up=users.filter(x=>x.id!==u.id);setUsers(up);await saveData("crm-users",up);} }}>🗑</button>
+              </>}
+            </div>
+          </div>
+          <div style={{ marginTop:8,marginLeft:46,display:"flex",gap:16,flexWrap:"wrap" }}>
+            <div style={{ fontSize:12 }}>
+              <span style={{ color:"var(--text-3)" }}>Kullanıcı adı: </span>
+              <span style={{ fontWeight:500,fontFamily:"monospace",background:"var(--surface-2)",padding:"2px 6px",borderRadius:4 }}>{u.username}</span>
+            </div>
+            <div style={{ fontSize:12,display:"flex",alignItems:"center",gap:4 }}>
+              <span style={{ color:"var(--text-3)" }}>Şifre: </span>
+              {u.plainPassword ? (
+                <span style={{ display:"flex",alignItems:"center",gap:4 }}>
+                  <span style={{ fontWeight:500,fontFamily:"monospace",background:"var(--surface-2)",padding:"2px 6px",borderRadius:4 }}>
+                    {showPassword[u.id] ? u.plainPassword : "••••••"}
+                  </span>
+                  <button style={{ background:"none",border:"none",cursor:"pointer",fontSize:13,color:"var(--text-2)",padding:0 }} onClick={()=>setShowPassword(p=>({...p,[u.id]:!p[u.id]}))}>
+                    {showPassword[u.id] ? "🙈" : "👁"}
+                  </button>
+                </span>
+              ) : (
+                <span style={{ fontSize:11,color:"var(--text-3)",fontStyle:"italic" }}>Görüntülenemez (eski kayıt)</span>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+
+      {/* Password Reset Modal */}
+      {resetUserId&&<div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setResetUserId(null)}><div className="modal" style={{ maxWidth:400 }}>
+        <div className="modal-handle" />
+        <div className="modal-title">🔑 Şifre Değiştir</div>
+        <div style={{ background:"var(--surface-2)",padding:10,borderRadius:8,fontSize:12,color:"var(--text-2)",marginBottom:14 }}>
+          {users.find(x=>x.id===resetUserId)?.name} — @{users.find(x=>x.id===resetUserId)?.username}
+        </div>
+        {users.find(x=>x.id===resetUserId)?.plainPassword && (
+          <div style={{ background:"var(--warning-light)",padding:10,borderRadius:8,fontSize:12,color:"#92400E",marginBottom:14 }}>
+            Mevcut şifre: <strong style={{ fontFamily:"monospace" }}>{users.find(x=>x.id===resetUserId)?.plainPassword}</strong>
+          </div>
+        )}
+        <div className="input-group">
+          <label className="input-label">Yeni şifre (min 6 karakter)</label>
+          <input className="input" type="text" value={resetPassword} onChange={e=>{setResetPassword(e.target.value);setResetError("");}} placeholder="Yeni şifreyi yazın" autoFocus />
+        </div>
+        {resetError&&<div style={{ color:"var(--danger)",fontSize:12,marginBottom:10 }}>{resetError}</div>}
+        <div style={{ display:"flex",gap:10 }}>
+          <button className="btn btn-outline" style={{ flex:1 }} onClick={()=>setResetUserId(null)}>İptal</button>
+          <button className="btn btn-primary" style={{ flex:1 }} onClick={async()=>{
+            if(!resetPassword||resetPassword.length<6){setResetError("Şifre en az 6 karakter olmalı");return;}
+            const h=await hashPassword(resetPassword);
+            const up=users.map(x=>x.id===resetUserId?{...x,passwordHash:h,plainPassword:resetPassword}:x);
+            setUsers(up);await saveData("crm-users",up);
+            setResetUserId(null);setResetPassword("");
+            setSuccessMsg("Şifre başarıyla değiştirildi");setTimeout(()=>setSuccessMsg(""),3000);
+          }}>Şifreyi Değiştir</button>
+        </div>
+      </div></div>}
+
+      {showAddUser&&<div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setShowAddUser(false)}><div className="modal"><div className="modal-handle" /><div className="modal-title">🔒 Yeni Kullanıcı</div>
+        <div className="desktop-grid">
+          <div className="input-group"><label className="input-label">Ad Soyad</label><input className="input" value={newUser.name} onChange={e=>{setNewUser(p=>({...p,name:e.target.value}));setUserError("");}} autoFocus /></div>
+          <div className="input-group"><label className="input-label">Kullanıcı adı</label><input className="input" value={newUser.username} onChange={e=>{setNewUser(p=>({...p,username:e.target.value}));setUserError("");}} /></div>
+          <div className="input-group"><label className="input-label">Şifre (min 6)</label><input className="input" type="text" value={newUser.password} onChange={e=>{setNewUser(p=>({...p,password:e.target.value}));setUserError("");}} placeholder="Şifre belirleyin" /></div>
+          <div className="input-group"><label className="input-label">Rol</label><select className="input" value={newUser.role} onChange={e=>setNewUser(p=>({...p,role:e.target.value}))}><option value="admission">Admission</option><option value="fao">FAO</option><option value="admin">Admin</option></select></div>
+        </div>
+        {(newUser.role==="admission"||newUser.role==="fao")&&<div className="input-group"><label className="input-label">Okul *</label><select className="input" value={newUser.schoolId} onChange={e=>setNewUser(p=>({...p,schoolId:e.target.value}))}><option value="">Seçin</option>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div>}
+        {userError&&<div style={{ color:"var(--danger)",fontSize:12,marginBottom:10 }}>{userError}</div>}
+        <div style={{ display:"flex",gap:10,marginTop:8 }}><button className="btn btn-outline" style={{ flex:1 }} onClick={()=>{setShowAddUser(false);setUserError("");}}>İptal</button><button className="btn btn-primary" style={{ flex:1 }} onClick={handleAddUser}>Ekle</button></div>
+      </div></div>}
+    </div>)}
+
+    {settingsTab==="schools"&&(<div className="card">
+      <div className="card-title" style={{ marginBottom:14 }}>Okul Yönetimi</div>
+      {schools.map((s,i)=>(
+        <div key={s.id} style={{ display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid var(--surface-2)" }}>
+          <input className="input" value={s.name} onChange={e=>{ const u=[...schools]; u[i]={...s,name:e.target.value}; setSchools(u); saveData("crm-schools",u); }} />
+          <button className="btn btn-sm btn-danger" onClick={()=>{ const u=schools.filter((_,j)=>j!==i); setSchools(u); saveData("crm-schools",u); }}>×</button>
+        </div>
+      ))}
+      <button className="btn btn-outline btn-sm" style={{ marginTop:12 }} onClick={()=>{ const u=[...schools,{id:generateId(),name:"Yeni Okul"}]; setSchools(u); saveData("crm-schools",u); }}>+ Okul Ekle</button>
+    </div>)}
+
+    {settingsTab==="programs"&&(<div className="card">
+      <div className="card-title" style={{ marginBottom:14 }}>Program Yönetimi</div>
+      {programs.map((p,i)=>(
+        <div key={i} style={{ display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid var(--surface-2)" }}>
+          <input className="input" value={p} onChange={e=>{ const u=[...programs]; u[i]=e.target.value; setPrograms(u); saveData("crm-programs",u); }} />
+          <button className="btn btn-sm btn-danger" onClick={()=>{ const u=programs.filter((_,j)=>j!==i); setPrograms(u); saveData("crm-programs",u); }}>×</button>
+        </div>
+      ))}
+      <div style={{ display:"flex", gap:8, marginTop:12 }}>
+        <input className="input" placeholder="Yeni program adı" value={newProgram} onChange={e=>setNewProgram(e.target.value)} onKeyDown={e=>{ if(e.key==="Enter"&&newProgram.trim()){ const u=[...programs,newProgram.trim()]; setPrograms(u); saveData("crm-programs",u); setNewProgram(""); }}} />
+        <button className="btn btn-primary btn-sm" onClick={()=>{ if(newProgram.trim()){ const u=[...programs,newProgram.trim()]; setPrograms(u); saveData("crm-programs",u); setNewProgram(""); }}}>Ekle</button>
+      </div>
+    </div>)}
+
+    {settingsTab==="batches"&&(<div className="card">
+      <div className="card-header"><span className="card-title">Batch Tarihleri</span><button className="btn btn-outline btn-sm" onClick={()=>{ const m=generate2026Mondays(); setBatchDates(m); saveData("crm-batch-dates",m); }}>2026 Pazartesileri Yükle</button></div>
+      <p style={{ fontSize:12, color:"var(--text-2)", marginBottom:12 }}>Öğrencileri bu tarihlere atayabilirsiniz. İstediğiniz tarihi ekleyip çıkarabilirsiniz.</p>
+      <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:16 }}>
+        {batchDates.map(d=>(
+          <span key={d} className="batch-tag">
+            {formatDate(d)}
+            <button onClick={()=>{ const u=batchDates.filter(x=>x!==d); setBatchDates(u); saveData("crm-batch-dates",u); }}>×</button>
+          </span>
+        ))}
+        {batchDates.length===0&&<div style={{ color:"var(--text-3)",fontSize:13,padding:12 }}>Henüz tarih yok. "2026 Pazartesileri Yükle" butonuna basın veya manuel ekleyin.</div>}
+      </div>
+      <div style={{ display:"flex", gap:8 }}>
+        <input className="input" type="date" max="2099-12-31" value={newBatchDate} onChange={e=>setNewBatchDate(e.target.value)} />
+        <button className="btn btn-primary btn-sm" onClick={()=>{ if(newBatchDate&&!batchDates.includes(newBatchDate)){ const u=[...batchDates,newBatchDate].sort(); setBatchDates(u); saveData("crm-batch-dates",u); setNewBatchDate(""); }}}>Tarih Ekle</button>
+      </div>
+    </div>)}
+
+    {settingsTab==="data"&&(<div className="card">
+      <div className="card-title" style={{ marginBottom:14 }}>Veri Yönetimi</div>
+      <button className="btn btn-outline btn-sm btn-full" style={{ marginBottom:8 }} onClick={()=>{ const d=JSON.stringify({students,schools,programs,batchDates},null,2); const b=new Blob([d],{type:"application/json"}); const u=URL.createObjectURL(b); const a=document.createElement("a"); a.href=u; a.download=`redmaple-backup-${new Date().toISOString().slice(0,10)}.json`; a.click(); URL.revokeObjectURL(u); }}>📥 Yedekle (JSON)</button>
+      <button className="btn btn-danger btn-sm btn-full" onClick={async()=>{ if(confirm("Tüm veriler silinecek?")){ setStudents([]); await saveData("crm-students",[]); }}}>🗑 Tüm Verileri Sil</button>
+    </div>)}
+  </>);
+}
+
+// ========== MAIN APP ==========
+function App() {
+  const [user, setUser] = useState(null);
+  const [page, setPage] = useState("dashboard");
+  const [students, setStudents] = useState([]);
+  const [schools, setSchools] = useState([]);
+  const [todos, setTodos] = useState([]);
+  const [programs, setPrograms] = useState(DEFAULT_PROGRAMS);
+  const [batchDates, setBatchDates] = useState([]);
+  const [selectedStudentId, setSelectedStudentId] = useState(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [quickMode, setQuickMode] = useState(false);
+  const [filter, setFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      loadData("crm-students",[]), loadData("crm-schools",[{id:"s1",name:"Okul 1"},{id:"s2",name:"Okul 2"}]),
+      loadData("crm-session",null), loadData("crm-users",[]), loadData("crm-todos",[]),
+      loadData("crm-programs",DEFAULT_PROGRAMS), loadData("crm-batch-dates",[]),
+    ]).then(([s,sc,session,allUsers,t,pr,bd])=>{
+      setStudents(s); setSchools(sc); setTodos(t); setPrograms(pr); setBatchDates(bd);
+      if (session&&allUsers.length>0) { const v=allUsers.find(u=>u.id===session.id&&u.active); if(v) setUser({id:v.id,name:v.name,role:v.role,schoolId:v.schoolId}); }
+      setLoading(false);
+    });
+  }, []);
+
+  useEffect(() => { if(!loading) saveData("crm-students",students); }, [students,loading]);
+  useEffect(() => { if(!loading) saveData("crm-todos",todos); }, [todos,loading]);
+
+  const handleLogin = useCallback(u=>{ setUser(u); saveData("crm-session",u); },[]);
+  const handleLogout = useCallback(()=>{ setUser(null); saveData("crm-session",null); setPage("dashboard"); },[]);
+  const addStudent = useCallback(s=>setStudents(p=>[...p,s]),[]);
+  const updateStudent = useCallback(u=>setStudents(p=>p.map(s=>s.id===u.id?u:s)),[]);
+  const selectedStudent = useMemo(()=>students.find(s=>s.id===selectedStudentId),[students,selectedStudentId]);
+  const navigateTo = useCallback((p,id)=>{ setPage(p==="detail"?"detail":p); if(id) setSelectedStudentId(id); },[]);
+
+  const activeTodos = todos.filter(t=>!t.done).length;
+
+  if (loading) return <div style={{ minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--surface)" }}><style>{css}</style><div style={{ textAlign:"center" }}><MapleLogo size={48} /><div style={{ color:"var(--text-2)",marginTop:8 }}>Yükleniyor...</div></div></div>;
+  if (!user) return <><style>{css}</style><LoginScreen onLogin={handleLogin} /></>;
+
+  const isAdmin = user.role === "admin";
+  const navItems = [
+    { key:"dashboard", icon:"📊", label:"Panel", show:true },
+    { key:"students", icon:"👥", label:"Öğrenciler", show:true },
+    { key:"todos", icon:"📝", label:"Görevler", badge:activeTodos||null, show:isAdmin },
+    { key:"settings", icon:"⚙️", label:"Ayarlar", show:isAdmin },
+  ];
+
+  return (<>
+    <style>{css}</style>
+    <div className="app-shell">
+      {/* Desktop Sidebar */}
+      <div className="sidebar">
+        <div className="sidebar-brand"><div style={{ display:"flex",alignItems:"center",gap:10 }}><MapleLogo size={28} color="white" /><div><h1 style={{ fontSize:16 }}>{BRAND_NAME}</h1><p style={{ fontSize:10,opacity:0.5,marginTop:1 }}>{BRAND_SUB}</p></div></div></div>
+        <div className="sidebar-nav">
+          {navItems.filter(n=>n.show).map(n=>(
+            <div key={n.key} className={`snav-item ${page===n.key?"active":""}`} onClick={()=>setPage(n.key)}>
+              <span className="snav-icon">{n.icon}</span><span>{n.label}</span>
+              {n.badge&&<span className="snav-badge">{n.badge}</span>}
+            </div>
+          ))}
+          {isAdmin&&<>
+            <div style={{ height:1,background:"rgba(255,255,255,0.1)",margin:"8px 16px" }} />
+            <div className="snav-item" onClick={()=>{setQuickMode(true);setShowAddModal(true);}}>
+              <span className="snav-icon">⚡</span><span>Hızlı Kayıt</span>
+            </div>
+            <div className="snav-item" onClick={()=>{setQuickMode(false);setShowAddModal(true);}}>
+              <span className="snav-icon">📋</span><span>Tam Kayıt</span>
+            </div>
+          </>}
+        </div>
+        <div className="sidebar-footer">
+          <div className="sidebar-user">
+            <div className="sidebar-avatar">{user.name[0]?.toUpperCase()}</div>
+            <div style={{ flex:1 }}><div className="sidebar-uname">{user.name}</div><div className="sidebar-urole">{ROLES[user.role]?.label}</div></div>
+            <button style={{ background:"none",border:"none",color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:16 }} onClick={handleLogout}>⏻</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile Header */}
+      <div className="mobile-header">
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center" }}>
+          <div><h1 style={{ display:"flex",alignItems:"center",gap:6 }}><MapleLogo size={20} color="white" /> {BRAND_NAME}</h1><p>{user.name} • {ROLES[user.role]?.label}</p></div>
+          <button className="btn btn-sm" style={{ background:"rgba(255,255,255,0.15)",color:"white",border:"none",fontSize:11 }} onClick={handleLogout}>Çıkış</button>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="main-content">
+        <div className="page-header">
+          <h2 className="page-title">
+            {page==="dashboard"&&"Panel"}
+            {page==="students"&&"Öğrenciler"}
+            {page==="detail"&&"Öğrenci Detay"}
+            {page==="todos"&&"Yapılacaklar"}
+            {page==="settings"&&"Ayarlar"}
+          </h2>
+          {page==="students"&&isAdmin&&<button className="btn btn-primary btn-sm" onClick={()=>{setQuickMode(false);setShowAddModal(true);}}>+ Öğrenci Ekle</button>}
+        </div>
+        <div className="page-body">
+          {page==="dashboard"&&<Dashboard students={students} user={user} onNavigate={navigateTo} />}
+          {page==="students"&&<StudentList students={students} user={user} filter={filter} setFilter={setFilter} searchQuery={searchQuery} setSearchQuery={setSearchQuery} onSelect={id=>{setSelectedStudentId(id);setPage("detail");}} />}
+          {page==="detail"&&selectedStudent&&<StudentDetail student={selectedStudent} onUpdate={updateStudent} onBack={()=>setPage("students")} user={user} schools={schools} programs={programs} batchDates={batchDates} />}
+          {page==="todos"&&isAdmin&&<TodoList todos={todos} setTodos={setTodos} students={students} user={user} />}
+          {page==="settings"&&isAdmin&&<SettingsPage schools={schools} setSchools={setSchools} students={students} setStudents={setStudents} programs={programs} setPrograms={setPrograms} batchDates={batchDates} setBatchDates={setBatchDates} />}
+        </div>
+      </div>
+
+      {/* Mobile Bottom Nav */}
+      <div className="mobile-nav">
+        {navItems.filter(n=>n.show).map(n=>(
+          <div key={n.key} className={`mnav-item ${page===n.key?"active":""}`} onClick={()=>setPage(n.key)}>
+            <span style={{ fontSize:18 }}>{n.icon}</span>
+            <span>{n.label}{n.badge?` (${n.badge})`:""}</span>
+          </div>
+        ))}
+        {isAdmin&&<div className="mnav-item" onClick={()=>{setQuickMode(true);setShowAddModal(true);}}>
+          <span style={{ fontSize:18,background:"var(--primary)",color:"white",borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",marginTop:-6 }}>+</span>
+          <span>Ekle</span>
+        </div>}
+      </div>
+
+      {showAddModal&&<AddStudentModal onClose={()=>setShowAddModal(false)} onSave={addStudent} schools={schools} quickMode={quickMode} programs={programs} batchDates={batchDates} />}
+    </div>
+  </>);
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+</script>
+</body>
+</html>
